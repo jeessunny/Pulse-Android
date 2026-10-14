@@ -1,0 +1,70 @@
+name: Android CI Build & Release
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Publish Pulse APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Grant Execute Permission to Gradlew
+        run: chmod +x gradlew
+
+      - name: Build Debug APK with Gradle
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pulse-Debug-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: Pulse Telemetry v1.0.0 (Debug APK)
+          body: |
+            ### ⚡ Pulse — Real-Time Android System Telemetry
+            
+            Production-ready native Android telemetry and performance monitoring application built with Jetpack Compose & Material You.
+            
+            #### Features:
+            - **Rearrangeable & Resizable Tile Dashboard** (Compact 1x1 & Detailed Expanded 2x1 modes)
+            - **Battery & App Power Monitor** with real-time stats, drain rate, and discharge graph
+            - **Network Speed & Traffic Monitor** with live speed, ping latency, and throughput sparkline
+            - **Digital Wellbeing & Screen Time** with unlock counts and top apps ranking
+            - **System Task Manager** with RAM gauge, CPU load, and memory pressure history
+            - **Storage Overview** with used/free breakdown
+            - **Physical Activity & Device Event Logger** tracking screen on/off, charging, and step motion
+            - **Background Foreground Service & WorkManager** for continuous logging and cleanup
+            
+            Download and install `app-debug.apk` directly on your Android device!
+          files: app/build/outputs/apk/debug/app-debug.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

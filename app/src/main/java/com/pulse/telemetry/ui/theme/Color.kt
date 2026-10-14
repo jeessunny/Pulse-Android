@@ -1,0 +1,53 @@
+package com.pulse.telemetry.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+// Light Scheme Colors
+val LightPrimary = Color(0xFF006875)
+val LightOnPrimary = Color(0xFFFFFFFF)
+val LightPrimaryContainer = Color(0xFF9EEFFF)
+val LightOnPrimaryContainer = Color(0xFF001F24)
+val LightSecondary = Color(0xFF4A6267)
+val LightOnSecondary = Color(0xFFFFFFFF)
+val LightSecondaryContainer = Color(0xFFCDE7ED)
+val LightOnSecondaryContainer = Color(0xFF051F23)
+val LightTertiary = Color(0xFF525E7D)
+val LightOnTertiary = Color(0xFFFFFFFF)
+val LightTertiaryContainer = Color(0xFFDAE2FF)
+val LightOnTertiaryContainer = Color(0xFF0E1A37)
+val LightBackground = Color(0xFFFBFDFF)
+val LightOnBackground = Color(0xFF191C1D)
+val LightSurface = Color(0xFFF8FAFB)
+val LightOnSurface = Color(0xFF191C1D)
+val LightSurfaceVariant = Color(0xFFDBE4E6)
+val LightOnSurfaceVariant = Color(0xFF3F484A)
+val LightOutline = Color(0xFF6F797B)
+
+// Dark Scheme Colors
+val DarkPrimary = Color(0xFF4DD8EC)
+val DarkOnPrimary = Color(0xFF00363D)
+val DarkPrimaryContainer = Color(0xFF004E59)
+val DarkOnPrimaryContainer = Color(0xFF9EEFFF)
+val DarkSecondary = Color(0xFFB1CBD0)
+val DarkOnSecondary = Color(0xFF1C3438)
+val DarkSecondaryContainer = Color(0xFF334B4F)
+val DarkOnSecondaryContainer = Color(0xFFCDE7ED)
+val DarkTertiary = Color(0xFFBAC6EA)
+val DarkOnTertiary = Color(0xFF24304D)
+val DarkTertiaryContainer = Color(0xFF3B4664)
+val DarkOnTertiaryContainer = Color(0xFFDAE2FF)
+val DarkBackground = Color(0xFF0D1217)
+val DarkOnBackground = Color(0xFFE1E3E4)
+val DarkSurface = Color(0xFF131920)
+val DarkOnSurface = Color(0xFFE1E3E4)
+val DarkSurfaceVariant = Color(0xFF1C252F)
+val DarkOnSurfaceVariant = Color(0xFFBFC8CA)
+val DarkOutline = Color(0xFF424E55)
+
+// Status & Metric Accents
+val MetricCyan = Color(0xFF00E5FF)
+val MetricGreen = Color(0xFF00E676)
+val MetricAmber = Color(0xFFFFB300)
+val MetricRed = Color(0xFFFF5252)
+val MetricPurple = Color(0xFFB388FF)
+val MetricBlue = Color(0xFF448AFF)
