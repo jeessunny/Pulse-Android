@@ -15,7 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
-import androidx.compose.material.icons.rounded.CellularTower
+import androidx.compose.material.icons.rounded.SignalCellularAlt
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -45,7 +45,7 @@ fun NetworkTile(
     onMoveDown: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val netIcon = if (telemetry.isCellular) Icons.Rounded.CellularTower else Icons.Rounded.Wifi
+    val netIcon = if (telemetry.isCellular) Icons.Rounded.SignalCellularAlt else Icons.Rounded.Wifi
 
     TileCard(
         title = "Network & Traffic",
