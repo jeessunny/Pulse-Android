@@ -23,6 +23,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class TelemetryLoggingService : Service() {
 
@@ -52,8 +53,9 @@ class TelemetryLoggingService : Service() {
                         repository.recordDeviceEvent("POWER_DISCONNECTED", "Charger disconnected")
                     }
                     Intent.ACTION_BATTERY_LOW -> {
-                        repository.recordDeviceEvent("BATTERY_LOW", "Battery dropped to low level")
+                        repository.recordDeviceEvent("BATTERY_LOW", "Battery low warning")
                     }
+                    @Suppress("DEPRECATION")
                     ConnectivityManager.CONNECTIVITY_ACTION -> {
                         val net = repository.getLiveNetwork()
                         val desc = if (net.isConnected) "Network connected: ${net.connectionType}" else "Network disconnected"
@@ -82,7 +84,8 @@ class TelemetryLoggingService : Service() {
         registerReceiver(systemEventReceiver, filter)
 
         startForegroundNotification()
-        startPeriodicLogging()
+        startLiveNotificationUpdates()
+        startPeriodicDatabaseLogging()
     }
 
     private fun createNotificationChannel() {
@@ -100,7 +103,7 @@ class TelemetryLoggingService : Service() {
     }
 
     private fun startForegroundNotification() {
-        val notification = buildNotification("Monitoring active", "Collecting system metrics...")
+        val notification = buildNotification("Monitoring Active", "Collecting system telemetry...")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
                 NOTIFICATION_ID,
@@ -133,20 +136,35 @@ class TelemetryLoggingService : Service() {
             .build()
     }
 
-    private fun startPeriodicLogging() {
+    private fun startLiveNotificationUpdates() {
         serviceScope.launch {
             while (isActive) {
                 runCatching {
-                    repository.recordTelemetrySnapshot()
                     val battery = repository.getLiveBattery()
                     val sys = repository.getLiveSystem()
                     val net = repository.getLiveNetwork()
 
-                    val speedKb = net.downloadSpeedBps / 1024
-                    val statusText = "⚡ ${battery.level}% | RAM: ${sys.ramPercentage}% | 📶 ${speedKb} KB/s"
+                    val speedText = when {
+                        net.downloadSpeedBps >= 1024 * 1024 -> String.format(Locale.US, "%.1f MB/s", net.downloadSpeedBps / (1024.0 * 1024.0))
+                        net.downloadSpeedBps >= 1024 -> "${net.downloadSpeedBps / 1024} KB/s"
+                        else -> "${net.downloadSpeedBps} B/s"
+                    }
+
+                    val statusText = "Battery: ${battery.level}% • RAM: ${sys.ramPercentage}% • Net: $speedText"
                     notificationManager.notify(NOTIFICATION_ID, buildNotification("Active Telemetry", statusText))
                 }
-                delay(30_000L) // Log snapshot every 30 seconds
+                delay(3000L) // Frequent 3s update so live network speed is always fresh in notification
+            }
+        }
+    }
+
+    private fun startPeriodicDatabaseLogging() {
+        serviceScope.launch {
+            while (isActive) {
+                runCatching {
+                    repository.recordTelemetrySnapshot()
+                }
+                delay(30_000L) // Persist database history snapshot every 30s
             }
         }
     }

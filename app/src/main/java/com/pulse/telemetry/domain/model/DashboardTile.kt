@@ -1,12 +1,13 @@
 package com.pulse.telemetry.domain.model
 
 enum class TileId(val defaultTitle: String) {
-    BATTERY("Battery & Power"),
-    NETWORK("Network & Traffic"),
-    SCREEN_TIME("Digital Wellbeing"),
-    SYSTEM("System & Task Manager"),
-    STORAGE("Storage Overview"),
-    EVENTS("Activity & Device Events");
+    BATTERY("Battery"),
+    NETWORK("Network"),
+    SCREEN_TIME("Screen Time"),
+    SYSTEM("System"),
+    STORAGE("Storage"),
+    ACTIVITY("Activity"),
+    EVENTS("Device Events");
 
     companion object {
         fun fromString(name: String): TileId {

@@ -11,12 +11,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.BatteryFull
-import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -34,7 +31,6 @@ import com.pulse.telemetry.ui.components.CircularGauge
 import com.pulse.telemetry.ui.components.MetricSparklineChart
 import com.pulse.telemetry.ui.components.TileCard
 import com.pulse.telemetry.ui.theme.MetricAmber
-import com.pulse.telemetry.ui.theme.MetricCyan
 import com.pulse.telemetry.ui.theme.MetricGreen
 import com.pulse.telemetry.ui.theme.MetricRed
 import java.util.Locale
@@ -57,7 +53,7 @@ fun BatteryTile(
     val icon = if (telemetry.isCharging) Icons.Rounded.BatteryChargingFull else Icons.Rounded.BatteryFull
 
     TileCard(
-        title = "Battery & Power",
+        title = "Battery",
         icon = icon,
         iconTint = levelColor,
         isExpanded = isExpanded,
@@ -67,39 +63,40 @@ fun BatteryTile(
         modifier = modifier
     ) {
         if (!isExpanded) {
-            // Compact Mode
+            // Square Compact Mode
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
                 CircularGauge(
                     percentage = telemetry.level,
-                    size = 80.dp,
-                    strokeWidth = 7.dp,
+                    size = 62.dp,
+                    strokeWidth = 6.dp,
                     primaryColor = levelColor,
                     subLabel = if (telemetry.isCharging) "Charging" else "${telemetry.temperatureCelsius}°C"
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = telemetry.status,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "${String.format(Locale.US, "%.2f", telemetry.voltageMv / 1000f)}V",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = telemetry.status,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "${String.format(Locale.US, "%.1f", telemetry.voltageMv / 1000f)}V",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         } else {
             // Expanded Mode
             Column(modifier = Modifier.fillMaxWidth()) {
-                // Key metrics row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -108,8 +105,8 @@ fun BatteryTile(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularGauge(
                             percentage = telemetry.level,
-                            size = 64.dp,
-                            strokeWidth = 6.dp,
+                            size = 56.dp,
+                            strokeWidth = 5.dp,
                             primaryColor = levelColor
                         )
                         Spacer(modifier = Modifier.width(12.dp))
@@ -124,8 +121,8 @@ fun BatteryTile(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(MetricGreen.copy(alpha = 0.2f))
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(MetricGreen.copy(alpha = 0.15f))
                                             .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
                                         Text(
@@ -151,19 +148,18 @@ fun BatteryTile(
                             color = if (telemetry.estimatedDrainRatePerHour > 12f) MetricRed else MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Est. Drain Rate",
+                            text = "Drain Rate",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Historical Discharge Graph
                 Text(
-                    text = "Historical Battery Level (Last 24h)",
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                    text = "Discharge History (24h)",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -175,18 +171,16 @@ fun BatteryTile(
                     minLabel = "0%"
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Per-app Power Consumption Breakdown
                 if (telemetry.appUsageList.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "Top Active Apps (Power Consumption)",
-                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                        text = "Top Power Consumers",
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     telemetry.appUsageList.take(3).forEach { app ->
-                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                        Column(modifier = Modifier.padding(vertical = 3.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -202,12 +196,12 @@ fun BatteryTile(
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
-                            Spacer(modifier = Modifier.height(3.dp))
+                            Spacer(modifier = Modifier.height(2.dp))
                             LinearProgressIndicator(
                                 progress = { (app.percentageOfTotal / 100f).coerceIn(0f, 1f) },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(4.dp)
+                                    .height(3.dp)
                                     .clip(RoundedCornerShape(2.dp)),
                                 color = MaterialTheme.colorScheme.primary,
                                 trackColor = MaterialTheme.colorScheme.surfaceVariant,

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -48,7 +49,7 @@ fun SystemTaskTile(
     }
 
     TileCard(
-        title = "System & Tasks",
+        title = "System",
         icon = Icons.Rounded.Memory,
         iconTint = MetricPurple,
         isExpanded = isExpanded,
@@ -61,39 +62,40 @@ fun SystemTaskTile(
         val usedGb = String.format(Locale.US, "%.1f GB", telemetry.usedRamBytes / (1024.0 * 1024 * 1024))
 
         if (!isExpanded) {
-            // Compact Mode
+            // Square Compact Mode
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
                 CircularGauge(
                     percentage = telemetry.ramPercentage,
-                    size = 80.dp,
-                    strokeWidth = 7.dp,
+                    size = 62.dp,
+                    strokeWidth = 6.dp,
                     primaryColor = ramColor,
                     subLabel = "RAM"
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "$usedGb / $totalGb",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "CPU: ${telemetry.cpuUsagePercentage}%",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MetricGreen
-                    )
-                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "$usedGb/$totalGb",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "CPU ${telemetry.cpuUsagePercentage}%",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MetricGreen
+                )
             }
         } else {
             // Expanded Mode
             Column(modifier = Modifier.fillMaxWidth()) {
-                // Main stats row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -102,8 +104,8 @@ fun SystemTaskTile(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularGauge(
                             percentage = telemetry.ramPercentage,
-                            size = 64.dp,
-                            strokeWidth = 6.dp,
+                            size = 56.dp,
+                            strokeWidth = 5.dp,
                             primaryColor = ramColor
                         )
                         Spacer(modifier = Modifier.width(12.dp))
@@ -114,7 +116,7 @@ fun SystemTaskTile(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Total Capacity: $totalGb",
+                                text = "Total RAM: $totalGb",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -124,7 +126,7 @@ fun SystemTaskTile(
                     Column(horizontalAlignment = Alignment.End) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
@@ -136,39 +138,37 @@ fun SystemTaskTile(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "${telemetry.cpuCoreCount} Active CPU Cores",
+                            text = "${telemetry.cpuCoreCount} Cores",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // CPU Load row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Overall CPU Load",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurface
+                        text = "CPU Utilization",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         text = "${telemetry.cpuUsagePercentage}%",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         color = MetricGreen
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                // Historical RAM Memory Pressure Graph
                 Text(
-                    text = "Historical Memory Pressure (RAM %)",
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                    text = "RAM Pressure Trend",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(4.dp))

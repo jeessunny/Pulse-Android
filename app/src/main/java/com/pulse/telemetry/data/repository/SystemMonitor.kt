@@ -20,6 +20,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.Process
 import android.os.StatFs
+import com.pulse.telemetry.domain.model.ActivityTelemetry
 import com.pulse.telemetry.domain.model.AppPowerUsage
 import com.pulse.telemetry.domain.model.AppUsageDetail
 import com.pulse.telemetry.domain.model.BatteryTelemetry
@@ -29,7 +30,6 @@ import com.pulse.telemetry.domain.model.SystemTelemetry
 import com.pulse.telemetry.domain.model.UsageTelemetry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.io.RandomAccessFile
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -45,6 +45,7 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
 
     // Speed calculation state
+    private val speedLock = Any()
     private var lastRxBytes = TrafficStats.getTotalRxBytes()
     private var lastTxBytes = TrafficStats.getTotalTxBytes()
     private var lastSpeedCheckTimestamp = System.currentTimeMillis()
@@ -89,8 +90,8 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
                 currentAcceleration = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
                 val delta = kotlin.math.abs(currentAcceleration - lastAcceleration)
                 currentMotionState = when {
-                    delta > 4.0f -> "Active / Running"
-                    delta > 1.2f -> "Walking / In Motion"
+                    delta > 4.0f -> "Running"
+                    delta > 1.2f -> "Walking"
                     else -> "Stationary"
                 }
             }
@@ -101,6 +102,19 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
 
     fun getStepCount(): Int = totalSteps
     fun getMotionState(): String = currentMotionState
+
+    fun getActivityTelemetry(): ActivityTelemetry {
+        val steps = totalSteps
+        val distanceKm = steps * 0.00076f
+        val calories = (steps * 0.04f).toInt()
+        return ActivityTelemetry(
+            stepsCount = steps,
+            stepGoal = 10000,
+            motionState = currentMotionState,
+            distanceKm = distanceKm,
+            caloriesBurned = calories
+        )
+    }
 
     fun getBatteryTelemetry(): BatteryTelemetry {
         val intentFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
@@ -119,12 +133,12 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
             BatteryManager.BATTERY_STATUS_DISCHARGING -> "Discharging"
             BatteryManager.BATTERY_STATUS_FULL -> "Full"
             BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "Not Charging"
-            else -> "Unknown"
+            else -> "Normal"
         }
 
         val pluggedInt = batteryIntent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: 0
         val pluggedType = when (pluggedInt) {
-            BatteryManager.BATTERY_PLUGGED_AC -> "AC Adapter"
+            BatteryManager.BATTERY_PLUGGED_AC -> "AC Power"
             BatteryManager.BATTERY_PLUGGED_USB -> "USB Port"
             BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless"
             else -> "Unplugged"
@@ -160,25 +174,28 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
         val currentRx = TrafficStats.getTotalRxBytes()
         val currentTx = TrafficStats.getTotalTxBytes()
 
-        val elapsedMs = now - lastSpeedCheckTimestamp
-        val elapsedSec = if (elapsedMs > 0) elapsedMs / 1000f else 1f
+        val (dlSpeed, ulSpeed) = synchronized(speedLock) {
+            val elapsedMs = (now - lastSpeedCheckTimestamp).coerceAtLeast(100)
+            val elapsedSec = elapsedMs / 1000f
 
-        val dlSpeed = if (lastRxBytes > 0 && currentRx >= lastRxBytes) {
-            ((currentRx - lastRxBytes) / elapsedSec).toLong()
-        } else 0L
+            val dl = if (lastRxBytes > 0 && currentRx >= lastRxBytes) {
+                ((currentRx - lastRxBytes) / elapsedSec).toLong()
+            } else 0L
 
-        val ulSpeed = if (lastTxBytes > 0 && currentTx >= lastTxBytes) {
-            ((currentTx - lastTxBytes) / elapsedSec).toLong()
-        } else 0L
+            val ul = if (lastTxBytes > 0 && currentTx >= lastTxBytes) {
+                ((currentTx - lastTxBytes) / elapsedSec).toLong()
+            } else 0L
 
-        lastRxBytes = currentRx
-        lastTxBytes = currentTx
-        lastSpeedCheckTimestamp = now
+            lastRxBytes = currentRx
+            lastTxBytes = currentTx
+            lastSpeedCheckTimestamp = now
 
-        if (speedHistory.size >= 15) {
-            speedHistory.removeFirst()
+            if (speedHistory.size >= 15) {
+                speedHistory.removeFirst()
+            }
+            speedHistory.addLast(dl)
+            dl to ul
         }
-        speedHistory.addLast(dlSpeed)
 
         var isWifi = false
         var isCellular = false
@@ -194,14 +211,13 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
                 isCellular = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
                 connectionType = when {
                     isWifi -> "Wi-Fi"
-                    isCellular -> "Mobile Data"
+                    isCellular -> "Mobile"
                     capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
                     else -> "Connected"
                 }
             }
         }
 
-        // Measure live latency ping using quick socket connect to 1.1.1.1:53
         var pingMs = 0L
         if (isConnected) {
             pingMs = runCatching {
@@ -225,7 +241,7 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
             isCellular = isCellular,
             isConnected = isConnected,
             connectionType = connectionType,
-            speedHistory = speedHistory.toList()
+            speedHistory = synchronized(speedLock) { speedHistory.toList() }
         )
     }
 
@@ -263,37 +279,66 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
         val startOfDay = calendar.timeInMillis
         val now = System.currentTimeMillis()
 
-        val stats = usageStatsManager.queryUsageStats(
+        val rawStats = usageStatsManager.queryUsageStats(
             UsageStatsManager.INTERVAL_DAILY,
             startOfDay,
             now
         ) ?: emptyList()
 
         val packageManager = context.packageManager
-        val activeStats = stats.filter { it.totalTimeInForeground > 30_000L }
-            .sortedByDescending { it.totalTimeInForeground }
 
-        val totalScreenTimeMs = activeStats.sumOf { it.totalTimeInForeground }
+        // Packages to ignore from user screen time metrics
+        val ignoredPackages = setOf(
+            "android",
+            "com.android.systemui",
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.inputmethod.latin",
+            "com.google.android.apps.nexuslauncher",
+            "com.android.launcher3",
+            context.packageName
+        )
 
-        val topAppDetails = activeStats.take(6).map { stat ->
-            val appName = runCatching {
-                val appInfo = packageManager.getApplicationInfo(stat.packageName, 0)
+        // Group by package name to eliminate duplicate bucket entries and sum durations
+        val aggregatedByPackage = rawStats
+            .filter { it.packageName !in ignoredPackages && it.totalTimeInForeground > 10_000L }
+            .groupBy { it.packageName }
+            .mapValues { entry -> entry.value.sumOf { it.totalTimeInForeground } }
+            .filter { it.value > 15_000L }
+            .toList()
+            .sortedByDescending { it.second }
+
+        val totalScreenTimeMs = aggregatedByPackage.sumOf { it.second }
+
+        val topAppDetails = aggregatedByPackage.take(6).map { (pkgName, durationMs) ->
+            val appLabel = runCatching {
+                val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.getApplicationInfo(pkgName, PackageManager.ApplicationInfoFlags.of(0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getApplicationInfo(pkgName, 0)
+                }
                 packageManager.getApplicationLabel(appInfo).toString()
-            }.getOrDefault(stat.packageName.substringAfterLast('.'))
+            }.getOrNull()
 
-            val durationMinutes = stat.totalTimeInForeground / 60_000L
+            val resolvedName = if (!appLabel.isNullOrBlank() && !appLabel.equals("android", ignoreCase = true)) {
+                appLabel
+            } else {
+                pkgName.substringAfterLast('.').replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+            }
+
+            val durationMinutes = durationMs / 60_000L
             val hours = durationMinutes / 60
             val minutes = durationMinutes % 60
             val formatted = if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
 
             val percentage = if (totalScreenTimeMs > 0) {
-                (stat.totalTimeInForeground.toFloat() / totalScreenTimeMs) * 100f
+                (durationMs.toFloat() / totalScreenTimeMs) * 100f
             } else 0f
 
             AppUsageDetail(
-                packageName = stat.packageName,
-                appName = appName,
-                foregroundTimeMillis = stat.totalTimeInForeground,
+                packageName = pkgName,
+                appName = resolvedName,
+                foregroundTimeMillis = durationMs,
                 formattedDuration = formatted,
                 percentageOfTotal = percentage
             )
@@ -315,13 +360,17 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
         }
 
         val totalMinutes = totalScreenTimeMs / 60_000L
-        val formattedScreenTime = "${totalMinutes / 60}h ${totalMinutes % 60}m"
+        val formattedScreenTime = if (totalMinutes >= 60) {
+            "${totalMinutes / 60}h ${totalMinutes % 60}m"
+        } else {
+            "${totalMinutes}m"
+        }
 
         UsageTelemetry(
             hasPermission = true,
             totalScreenTimeMillis = totalScreenTimeMs,
             formattedScreenTime = formattedScreenTime,
-            unlockCount = if (unlockCount > 0) unlockCount else (activeStats.size * 2).coerceAtLeast(1),
+            unlockCount = if (unlockCount > 0) unlockCount else (topAppDetails.size * 3).coerceAtLeast(1),
             topApps = topAppDetails
         )
     }
@@ -381,7 +430,7 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
                     lastCpuWork = work
                 }
             }
-            24.5f
+            22.0f
         }.getOrDefault(18.0f)
     }
 

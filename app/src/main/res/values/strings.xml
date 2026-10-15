@@ -3,10 +3,11 @@
     <string name="app_name">Pulse</string>
     <string name="telemetry_notification_channel">Pulse Telemetry Service</string>
     <string name="telemetry_notification_desc">Continuous telemetry monitoring and metrics logging</string>
-    <string name="tile_battery">Battery &amp; Power</string>
-    <string name="tile_network">Network &amp; Traffic</string>
-    <string name="tile_screen_time">Digital Wellbeing</string>
-    <string name="tile_system">System &amp; Task Manager</string>
-    <string name="tile_storage">Storage Overview</string>
-    <string name="tile_events">Activity &amp; Device Events</string>
+    <string name="tile_battery">Battery</string>
+    <string name="tile_network">Network</string>
+    <string name="tile_screen_time">Screen Time</string>
+    <string name="tile_system">System</string>
+    <string name="tile_storage">Storage</string>
+    <string name="tile_activity">Activity</string>
+    <string name="tile_events">Device Events</string>
 </resources>

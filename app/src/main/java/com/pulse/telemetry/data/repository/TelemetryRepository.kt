@@ -109,6 +109,10 @@ class TelemetryRepository(private val context: Context) {
         return systemMonitor.getStorageTelemetry()
     }
 
+    fun getLiveActivity(): com.pulse.telemetry.domain.model.ActivityTelemetry {
+        return systemMonitor.getActivityTelemetry()
+    }
+
     suspend fun getLiveEvents(): List<DeviceEventItem> = withContext(Dispatchers.IO) {
         val entities = deviceEventDao.getRecentEvents(20)
         entities.map { entity ->

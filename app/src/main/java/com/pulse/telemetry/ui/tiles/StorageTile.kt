@@ -32,8 +32,6 @@ import com.pulse.telemetry.ui.components.CircularGauge
 import com.pulse.telemetry.ui.components.TileCard
 import com.pulse.telemetry.ui.theme.MetricAmber
 import com.pulse.telemetry.ui.theme.MetricCyan
-import com.pulse.telemetry.ui.theme.MetricGreen
-import com.pulse.telemetry.ui.theme.MetricPurple
 import com.pulse.telemetry.ui.theme.MetricRed
 
 @Composable
@@ -52,7 +50,7 @@ fun StorageTile(
     }
 
     TileCard(
-        title = "Storage Overview",
+        title = "Storage",
         icon = Icons.Rounded.Storage,
         iconTint = storageColor,
         isExpanded = isExpanded,
@@ -62,39 +60,40 @@ fun StorageTile(
         modifier = modifier
     ) {
         if (!isExpanded) {
-            // Compact Mode
+            // Square Compact Mode
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
                 CircularGauge(
                     percentage = telemetry.usedPercentage,
-                    size = 80.dp,
-                    strokeWidth = 7.dp,
+                    size = 62.dp,
+                    strokeWidth = 6.dp,
                     primaryColor = storageColor,
                     subLabel = "Used"
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "${telemetry.formattedFree} Free",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "Total: ${telemetry.formattedTotal}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${telemetry.formattedFree} free",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = telemetry.formattedTotal,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         } else {
             // Expanded Mode
             Column(modifier = Modifier.fillMaxWidth()) {
-                // Main stats row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -103,7 +102,7 @@ fun StorageTile(
                     Column {
                         Text(
                             text = "${telemetry.formattedUsed} Used",
-                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, fontSize = 24.sp),
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
@@ -115,14 +114,14 @@ fun StorageTile(
 
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "${telemetry.usedPercentage}% Full",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                             color = storageColor
                         )
                     }
@@ -130,27 +129,25 @@ fun StorageTile(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Progress Bar
                 LinearProgressIndicator(
                     progress = { (telemetry.usedPercentage / 100f).coerceIn(0f, 1f) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp)),
                     color = storageColor,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     strokeCap = StrokeCap.Round
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Segment Breakdown
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     StorageLegendItem(color = storageColor, label = "Used Space", value = telemetry.formattedUsed)
-                    StorageLegendItem(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), label = "Free Space", value = telemetry.formattedFree)
+                    StorageLegendItem(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), label = "Free Space", value = telemetry.formattedFree)
                 }
             }
         }
@@ -162,7 +159,7 @@ private fun StorageLegendItem(color: Color, label: String, value: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
-                .size(10.dp)
+                .size(8.dp)
                 .clip(CircleShape)
                 .background(color)
         )
