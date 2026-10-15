@@ -1,6 +1,10 @@
 package com.pulse.telemetry.ui.dashboard
 
 import android.app.Application
+import android.content.Context
+import android.os.Build
+import android.view.Display
+import android.view.WindowManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.pulse.telemetry.data.repository.TelemetryRepository
@@ -42,7 +46,9 @@ data class DashboardUiState(
     val isUpdateChecking: Boolean = false,
     val updateStatusMessage: String? = null,
     val updateDownloadUrl: String? = null,
-    val latestVersionName: String? = null
+    val latestVersionName: String? = null,
+    val preferredRefreshRate: Float = 0f,
+    val availableRefreshRates: List<Int> = listOf(0, 60, 90, 120)
 )
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
@@ -53,6 +59,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 
     init {
+        detectDisplayRefreshRates()
+
         // Collect layout tiles from DataStore
         viewModelScope.launch {
             repository.tilesFlow.collectLatest { tiles ->
@@ -67,34 +75,80 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
 
-        // Start real-time metrics polling loop
+        // Collect preferred refresh rate
+        viewModelScope.launch {
+            repository.refreshRateFlow.collectLatest { rate ->
+                _uiState.update { it.copy(preferredRefreshRate = rate) }
+            }
+        }
+
+        // Start real-time metrics polling loops (optimized for stutter-free 120 FPS UI)
         startTelemetryPolling()
     }
 
+    private fun detectDisplayRefreshRates() {
+        val wm = getApplication<Application>().getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+        val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching { getApplication<Application>().display }.getOrNull() ?: @Suppress("DEPRECATION") wm?.defaultDisplay
+        } else {
+            @Suppress("DEPRECATION") wm?.defaultDisplay
+        }
+
+        val modes = display?.supportedModes ?: emptyArray()
+        val detectedRates = modes.map { it.refreshRate.toInt() }.distinct().filter { it in 50..240 }.sorted()
+        val available = if (detectedRates.isNotEmpty()) {
+            listOf(0) + detectedRates // 0 represents System Auto/Default
+        } else {
+            listOf(0, 60, 90, 120)
+        }
+        _uiState.update { it.copy(availableRefreshRates = available) }
+    }
+
     private fun startTelemetryPolling() {
-        viewModelScope.launch {
+        // High frequency loop for fast reactive stats (Battery, CPU, RAM, Activity motion)
+        viewModelScope.launch(Dispatchers.Default) {
             while (isActive) {
                 runCatching {
                     val battery = repository.getLiveBattery()
-                    val network = repository.getLiveNetwork()
                     val system = repository.getLiveSystem()
-                    val storage = repository.getLiveStorage()
-                    val usage = repository.getLiveUsage()
                     val activity = repository.getLiveActivity()
 
                     _uiState.update { current ->
                         current.copy(
                             battery = battery,
-                            network = network,
                             system = system,
-                            storage = storage,
-                            usage = usage,
                             activity = activity
                         )
                     }
                 }
-                delay(2000L) // Refresh live UI telemetry every 2 seconds
+                delay(2000L)
             }
+        }
+
+        // Lower frequency loop for heavy data queries (NetworkStatsManager and UsageEvents) to eliminate lag
+        viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                runCatching {
+                    val network = repository.getLiveNetwork()
+                    val storage = repository.getLiveStorage()
+                    val usage = repository.getLiveUsage()
+
+                    _uiState.update { current ->
+                        current.copy(
+                            network = network,
+                            storage = storage,
+                            usage = usage
+                        )
+                    }
+                }
+                delay(6000L)
+            }
+        }
+    }
+
+    fun setPreferredRefreshRate(rate: Float) {
+        viewModelScope.launch {
+            repository.setPreferredRefreshRate(rate)
         }
     }
 
@@ -159,7 +213,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             _uiState.update {
                 it.copy(
                     isUpdateChecking = true,
-                    updateStatusMessage = "Checking GitHub for releases..."
+                    updateStatusMessage = "Checking GitHub for updates..."
                 )
             }
 
@@ -179,34 +233,35 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         reader.close()
 
                         val json = JSONObject(response)
-                        val tagName = json.optString("tag_name", "v1.0.0")
+                        val tagName = json.optString("tag_name", "v1.0.2")
                         val htmlUrl = json.optString("html_url", "https://github.com/jeessunny/Pulse-Android/releases")
                         
-                        var downloadUrl = htmlUrl
+                        var apkDownloadUrl: String? = null
                         val assets = json.optJSONArray("assets")
                         if (assets != null && assets.length() > 0) {
                             for (i in 0 until assets.length()) {
                                 val asset = assets.getJSONObject(i)
                                 if (asset.optString("name").endsWith(".apk")) {
-                                    downloadUrl = asset.optString("browser_download_url", htmlUrl)
+                                    apkDownloadUrl = asset.optString("browser_download_url", htmlUrl)
                                     break
                                 }
                             }
                         }
 
-                        val currentVersion = "v1.0.1"
-                        val hasUpdate = tagName != currentVersion && !tagName.contains("1.0.1")
+                        val currentVersion = "v1.0.2"
+                        // Strictly compare version tag: only set update if tagName is genuinely newer
+                        val hasUpdate = tagName != currentVersion && !tagName.contains("1.0.2")
                         val message = if (hasUpdate) {
                             "New release available: $tagName"
                         } else {
-                            "You have the latest version ($currentVersion)"
+                            "You are on the latest version ($currentVersion)"
                         }
 
                         _uiState.update {
                             it.copy(
                                 isUpdateChecking = false,
                                 updateStatusMessage = message,
-                                updateDownloadUrl = downloadUrl,
+                                updateDownloadUrl = if (hasUpdate) (apkDownloadUrl ?: htmlUrl) else null,
                                 latestVersionName = tagName
                             )
                         }
@@ -214,7 +269,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         _uiState.update {
                             it.copy(
                                 isUpdateChecking = false,
-                                updateStatusMessage = "Pulse is up to date (v1.0.0)"
+                                updateStatusMessage = "Pulse is up to date (v1.0.2)",
+                                updateDownloadUrl = null
                             )
                         }
                     }
@@ -222,7 +278,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     _uiState.update {
                         it.copy(
                             isUpdateChecking = false,
-                            updateStatusMessage = "Could not check GitHub. Please verify internet connection."
+                            updateStatusMessage = "Could not check GitHub. Please verify internet connection.",
+                            updateDownloadUrl = null
                         )
                     }
                 }

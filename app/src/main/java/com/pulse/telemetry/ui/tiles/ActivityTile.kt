@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DirectionsBus
 import androidx.compose.material.icons.rounded.DirectionsRun
 import androidx.compose.material.icons.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -27,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,6 +47,8 @@ fun ActivityTile(
     onMoveDown: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val motionIcon = getMotionIcon(telemetry.motionState)
+
     TileCard(
         title = "Activity",
         icon = Icons.Rounded.DirectionsRun,
@@ -54,6 +59,8 @@ fun ActivityTile(
         onMoveDown = onMoveDown,
         modifier = modifier
     ) {
+        val remainingSteps = (telemetry.stepGoal - telemetry.stepsCount).coerceAtLeast(0)
+
         if (!isExpanded) {
             // Square Compact Mode
             Column(
@@ -65,13 +72,13 @@ fun ActivityTile(
                     text = telemetry.formattedSteps,
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp
+                        fontSize = 21.sp
                     ),
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1
                 )
                 Text(
-                    text = "Steps Today",
+                    text = "of 10,000 Goal",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -82,13 +89,22 @@ fun ActivityTile(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = motionIcon,
+                        contentDescription = null,
+                        tint = MetricGreen,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = telemetry.motionState,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MetricGreen
+                    )
+                }
                 Text(
-                    text = telemetry.motionState,
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = MetricGreen
-                )
-                Text(
-                    text = "${telemetry.progressPercentage}% of goal",
+                    text = if (remainingSteps > 0) "${remainingSteps} left" else "Done!",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -104,27 +120,27 @@ fun ActivityTile(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(48.dp)
+                                .size(44.dp)
                                 .clip(CircleShape)
                                 .background(MetricGreen.copy(alpha = 0.15f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.DirectionsWalk,
+                                imageVector = motionIcon,
                                 contentDescription = null,
                                 tint = MetricGreen,
-                                modifier = Modifier.size(26.dp)
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "${telemetry.formattedSteps} Steps",
+                                text = "${telemetry.formattedSteps} / 10,000",
                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Current State: ${telemetry.motionState}",
+                                text = if (remainingSteps > 0) "Goal: 10,000 Steps (${remainingSteps} remaining)" else "Goal Completed!",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -138,7 +154,7 @@ fun ActivityTile(
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = "${telemetry.progressPercentage}% Goal",
+                            text = telemetry.motionState,
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                             color = MetricGreen
                         )
@@ -208,5 +224,14 @@ fun ActivityTile(
                 }
             }
         }
+    }
+}
+
+private fun getMotionIcon(state: String): ImageVector {
+    return when {
+        state.contains("Transit", ignoreCase = true) || state.contains("Vehicle", ignoreCase = true) -> Icons.Rounded.DirectionsBus
+        state.contains("Run", ignoreCase = true) -> Icons.Rounded.DirectionsRun
+        state.contains("Walk", ignoreCase = true) -> Icons.Rounded.DirectionsWalk
+        else -> Icons.Rounded.Person
     }
 }

@@ -70,20 +70,28 @@ class TelemetryRepository(private val context: Context) {
 
         // Per-app battery breakdown approximated via foreground usage
         val usage = systemMonitor.getUsageTelemetry()
-        val appUsageList = usage.topApps.map { detail ->
-            AppPowerUsage(
-                packageName = detail.packageName,
-                appName = detail.appName,
-                usageDurationMillis = detail.foregroundTimeMillis,
-                percentageOfTotal = detail.percentageOfTotal
-            )
-        }
+        val appUsageList = usage.topApps
+            .filter { !it.appName.equals("android", ignoreCase = true) && !it.packageName.equals("android", ignoreCase = true) }
+            .map { detail ->
+                AppPowerUsage(
+                    packageName = detail.packageName,
+                    appName = detail.appName,
+                    usageDurationMillis = detail.foregroundTimeMillis,
+                    percentageOfTotal = detail.percentageOfTotal
+                )
+            }
 
         base.copy(
             estimatedDrainRatePerHour = drainRatePerHour,
             appUsageList = appUsageList,
             historicalLevels = historicalLevels
         )
+    }
+
+    val refreshRateFlow: Flow<Float> = layoutPreferences.refreshRateFlow
+
+    suspend fun setPreferredRefreshRate(rate: Float) {
+        layoutPreferences.setPreferredRefreshRate(rate)
     }
 
     suspend fun getLiveNetwork(): NetworkTelemetry = withContext(Dispatchers.IO) {

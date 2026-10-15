@@ -17,6 +17,11 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class LayoutPreferences(private val context: Context) {
 
     private val KEY_TILE_ORDER = stringPreferencesKey("key_tile_order")
+    private val KEY_REFRESH_RATE = androidx.datastore.preferences.core.floatPreferencesKey("key_preferred_refresh_rate")
+
+    val refreshRateFlow: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[KEY_REFRESH_RATE] ?: 0f
+    }
 
     val tilesFlow: Flow<List<DashboardTile>> = context.dataStore.data.map { preferences ->
         val rawOrder = preferences[KEY_TILE_ORDER]
@@ -69,5 +74,11 @@ class LayoutPreferences(private val context: Context) {
         val item = mutable.removeAt(fromIndex)
         mutable.add(toIndex, item)
         saveTileOrder(mutable)
+    }
+
+    suspend fun setPreferredRefreshRate(rate: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_REFRESH_RATE] = rate
+        }
     }
 }
