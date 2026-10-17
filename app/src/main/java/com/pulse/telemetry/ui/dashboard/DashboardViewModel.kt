@@ -227,14 +227,14 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 )
             }
 
-            val resultState = updateManager.checkForUpdates(currentVersion = "v1.0.4")
+            val resultState = updateManager.checkForUpdates(currentVersion = "v1.0.5")
             _uiState.update {
                 it.copy(
                     updateState = resultState,
                     isUpdateChecking = false,
                     updateStatusMessage = when (resultState) {
                         is UpdateState.Available -> "New release available: ${resultState.release.tagName}"
-                        is UpdateState.UpToDate -> "Pulse is up to date (v1.0.4)"
+                        is UpdateState.UpToDate -> "Pulse is up to date (v1.0.5)"
                         is UpdateState.Error -> resultState.message
                         else -> null
                     },

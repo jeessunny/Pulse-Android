@@ -45,8 +45,8 @@ jobs:
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.4
-          name: Pulse Telemetry v1.0.4 (Debug APK)
+          tag_name: v1.0.5
+          name: Pulse Telemetry v1.0.5 (Debug APK)
           body: |
             ### Pulse — Real-Time Android System Telemetry
             
