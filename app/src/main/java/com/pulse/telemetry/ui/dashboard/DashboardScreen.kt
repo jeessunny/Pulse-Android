@@ -3,6 +3,8 @@ package com.pulse.telemetry.ui.dashboard
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -189,12 +191,16 @@ fun DashboardScreen(
                 val tileModifier = if (tile.isExpanded) {
                     Modifier
                         .fillMaxWidth()
-                        .animateItemPlacement()
+                        .animateItemPlacement(
+                            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                        )
                 } else {
                     Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .animateItemPlacement()
+                        .animateItemPlacement(
+                            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                        )
                 }
 
                 when (tile.id) {
@@ -289,7 +295,7 @@ fun DashboardScreen(
         }
 
         ModalBottomSheet(
-            onDismissRequest = { showSettingsSheet = false },
+            onDismissRequest = { hideAndDismiss() },
             sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
@@ -326,7 +332,7 @@ fun DashboardScreen(
                 // Refresh Rate Setting Card
                 Surface(
                     shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -405,7 +411,7 @@ fun DashboardScreen(
                 // App Update Card
                 Surface(
                     shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -428,7 +434,7 @@ fun DashboardScreen(
                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                                     )
                                     Text(
-                                        text = "Current: v1.0.2",
+                                        text = "Current: v1.0.3",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -494,7 +500,7 @@ fun DashboardScreen(
                 // Telemetry Sync Card
                 Surface(
                     shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -539,7 +545,7 @@ fun DashboardScreen(
                 // GitHub Source Link
                 Surface(
                     shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(

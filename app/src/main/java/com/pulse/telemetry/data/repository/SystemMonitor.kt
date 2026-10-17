@@ -5,10 +5,12 @@ import android.app.AppOpsManager
 import android.app.usage.NetworkStats
 import android.app.usage.NetworkStatsManager
 import android.app.usage.UsageEvents
+import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -22,6 +24,8 @@ import android.os.Build
 import android.os.Environment
 import android.os.Process
 import android.os.StatFs
+import com.pulse.telemetry.data.local.PulseDatabase
+import com.pulse.telemetry.data.local.entity.DeviceEventEntity
 import com.pulse.telemetry.domain.model.ActivityTelemetry
 import com.pulse.telemetry.domain.model.AppPowerUsage
 import com.pulse.telemetry.domain.model.AppUsageDetail
@@ -30,12 +34,16 @@ import com.pulse.telemetry.domain.model.NetworkTelemetry
 import com.pulse.telemetry.domain.model.StorageTelemetry
 import com.pulse.telemetry.domain.model.SystemTelemetry
 import com.pulse.telemetry.domain.model.UsageTelemetry
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.RandomAccessFile
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 import kotlin.math.sqrt
 
@@ -62,11 +70,19 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
     private var lastCpuWork: Long = 0L
     private var lastCpuTotal: Long = 0L
 
-    // Step and sensor state
+    // Step and sensor persistence
+    private val activityPrefs: SharedPreferences = context.getSharedPreferences("pulse_activity_prefs", Context.MODE_PRIVATE)
+    private val monitorScope = CoroutineScope(Dispatchers.IO)
+    private val deviceEventDao = PulseDatabase.getInstance(context).deviceEventDao()
+
     private var bootBaselineSteps = -1
     private var detectedStepsToday = 0
     private var currentMotionState = "Stationary"
     
+    // Charging state tracker to record charging logs
+    private var lastChargingState: Boolean? = null
+    private var lastPluggedType: String? = null
+
     // Rolling acceleration history for motion detection (e.g. transit vs walking)
     private val accelHistory = ArrayDeque<Float>(25)
     private var lastStepEventTime = 0L
@@ -76,7 +92,29 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
     private var lastPeakTime = 0L
 
     init {
+        initStepStateFromStorage()
         registerSensors()
+    }
+
+    private fun getTodayDateString(): String {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    }
+
+    private fun initStepStateFromStorage() {
+        val today = getTodayDateString()
+        val savedDate = activityPrefs.getString("activity_date", "")
+        if (savedDate == today) {
+            detectedStepsToday = activityPrefs.getInt("activity_steps_today", 0)
+            bootBaselineSteps = activityPrefs.getInt("activity_boot_baseline", -1)
+        } else {
+            detectedStepsToday = 0
+            bootBaselineSteps = -1
+            activityPrefs.edit()
+                .putString("activity_date", today)
+                .putInt("activity_steps_today", 0)
+                .putInt("activity_boot_baseline", -1)
+                .apply()
+        }
     }
 
     fun registerSensors() {
@@ -100,18 +138,36 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
         when (event.sensor.type) {
             Sensor.TYPE_STEP_COUNTER -> {
                 val rawCount = event.values[0].toInt()
-                if (bootBaselineSteps < 0) {
+                val today = getTodayDateString()
+                val savedDate = activityPrefs.getString("activity_date", "")
+
+                if (savedDate != today) {
+                    // Midnight rollover
+                    detectedStepsToday = 0
                     bootBaselineSteps = rawCount
-                }
-                val delta = (rawCount - bootBaselineSteps).coerceAtLeast(0)
-                if (delta > detectedStepsToday) {
-                    detectedStepsToday = delta
+                    activityPrefs.edit()
+                        .putString("activity_date", today)
+                        .putInt("activity_steps_today", 0)
+                        .putInt("activity_boot_baseline", bootBaselineSteps)
+                        .apply()
+                } else {
+                    if (bootBaselineSteps < 0 || rawCount < bootBaselineSteps) {
+                        // First run today or phone rebooted: preserve today's accumulated steps
+                        bootBaselineSteps = (rawCount - detectedStepsToday).coerceAtLeast(0)
+                        activityPrefs.edit().putInt("activity_boot_baseline", bootBaselineSteps).apply()
+                    }
+                    val delta = (rawCount - bootBaselineSteps).coerceAtLeast(0)
+                    if (delta > detectedStepsToday) {
+                        detectedStepsToday = delta
+                        activityPrefs.edit().putInt("activity_steps_today", detectedStepsToday).apply()
+                    }
                 }
                 lastStepEventTime = now
             }
             Sensor.TYPE_STEP_DETECTOR -> {
                 if (event.values[0] == 1.0f) {
                     detectedStepsToday++
+                    activityPrefs.edit().putInt("activity_steps_today", detectedStepsToday).apply()
                     lastStepEventTime = now
                 }
             }
@@ -128,6 +184,7 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
                     lastStepEventTime = now
                     if (bootBaselineSteps < 0) {
                         detectedStepsToday++
+                        activityPrefs.edit().putInt("activity_steps_today", detectedStepsToday).apply()
                     }
                 }
                 lastAccelMagnitude = magnitude
@@ -222,6 +279,24 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
             else -> "Normal"
         }
 
+        // Automatically detect and log charging state changes to the Live Log
+        val prevCharging = lastChargingState
+        if (prevCharging == null) {
+            lastChargingState = isCharging
+            lastPluggedType = pluggedType
+            if (isCharging) {
+                logDeviceEvent("POWER_CONNECTED", "Charging ($pluggedType, $percentage%)")
+            }
+        } else if (isCharging != prevCharging) {
+            lastChargingState = isCharging
+            lastPluggedType = pluggedType
+            if (isCharging) {
+                logDeviceEvent("POWER_CONNECTED", "Charger connected ($pluggedType, $percentage%)")
+            } else {
+                logDeviceEvent("POWER_DISCONNECTED", "Charger disconnected ($percentage%)")
+            }
+        }
+
         return BatteryTelemetry(
             level = percentage,
             isCharging = isCharging,
@@ -231,6 +306,21 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
             temperatureCelsius = tempCelsius,
             health = health
         )
+    }
+
+    fun logDeviceEvent(eventType: String, description: String) {
+        monitorScope.launch {
+            runCatching {
+                val entity = DeviceEventEntity(
+                    timestamp = System.currentTimeMillis(),
+                    eventType = eventType,
+                    description = description,
+                    stepsCount = detectedStepsToday,
+                    isCharging = lastChargingState ?: false
+                )
+                deviceEventDao.insertEvent(entity)
+            }
+        }
     }
 
     suspend fun getNetworkTelemetry(): NetworkTelemetry = withContext(Dispatchers.IO) {
@@ -405,71 +495,59 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
 
         val packageManager = context.packageManager
 
-        // Calculate exact screen time per app using UsageEvents timeline
+        // Calculate exact screen time per app using queryAndAggregateUsageStats
         val appTimeMap = mutableMapOf<String, Long>()
-        val foregroundTimestamps = mutableMapOf<String, Long>()
-        var unlockCount = 0
 
         runCatching {
-            val events = usageStatsManager.queryEvents(startOfDay, now)
+            val statsMap = usageStatsManager.queryAndAggregateUsageStats(startOfDay, now)
+            if (!statsMap.isNullOrEmpty()) {
+                for ((pkg, stat) in statsMap) {
+                    if (pkg !in ignoredPackages && stat.totalTimeInForeground > 5000L) {
+                        appTimeMap[pkg] = stat.totalTimeInForeground
+                    }
+                }
+            }
+        }
+
+        // Live real-time boost for current active foreground app session
+        runCatching {
+            val recentEvents = usageStatsManager.queryEvents(now - 120_000L, now)
             val event = UsageEvents.Event()
+            var currentPkg: String? = null
+            var currentStartTime = 0L
 
-            while (events.hasNextEvent()) {
-                events.getNextEvent(event)
+            while (recentEvents.hasNextEvent()) {
+                recentEvents.getNextEvent(event)
                 val pkg = event.packageName ?: continue
+                if (pkg in ignoredPackages) continue
 
-                when (event.eventType) {
-                    UsageEvents.Event.MOVE_TO_FOREGROUND,
-                    UsageEvents.Event.ACTIVITY_RESUMED -> {
-                        if (pkg !in ignoredPackages) {
-                            foregroundTimestamps[pkg] = event.timeStamp
-                        }
-                    }
-                    UsageEvents.Event.MOVE_TO_BACKGROUND,
-                    UsageEvents.Event.ACTIVITY_PAUSED,
-                    UsageEvents.Event.ACTIVITY_STOPPED -> {
-                        val startTime = foregroundTimestamps.remove(pkg)
-                        if (startTime != null && event.timeStamp > startTime) {
-                            val duration = event.timeStamp - startTime
-                            // Cap max single session to 6 hours to prevent leak if app was suspended without background event
-                            val validDuration = duration.coerceIn(100L, 6L * 3600 * 1000)
-                            appTimeMap[pkg] = (appTimeMap[pkg] ?: 0L) + validDuration
-                        }
-                    }
-                    UsageEvents.Event.KEYGUARD_HIDDEN,
-                    UsageEvents.Event.SCREEN_INTERACTIVE -> {
-                        unlockCount++
+                if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND ||
+                    event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
+                    currentPkg = pkg
+                    currentStartTime = event.timeStamp
+                } else if (event.eventType == UsageEvents.Event.MOVE_TO_BACKGROUND ||
+                           event.eventType == UsageEvents.Event.ACTIVITY_PAUSED) {
+                    if (currentPkg == pkg) {
+                        currentPkg = null
                     }
                 }
             }
 
-            // Accumulate apps currently in foreground
-            for ((pkg, startTime) in foregroundTimestamps) {
-                val duration = (now - startTime).coerceIn(100L, 6L * 3600 * 1000)
-                appTimeMap[pkg] = (appTimeMap[pkg] ?: 0L) + duration
+            if (currentPkg != null && currentStartTime > 0) {
+                val liveSession = (now - currentStartTime).coerceIn(1000L, 120_000L)
+                appTimeMap[currentPkg] = (appTimeMap[currentPkg] ?: 0L) + liveSession
             }
         }
 
-        // Secondary fallback if UsageEvents has no events (e.g. queryUsageStats aggregated)
-        if (appTimeMap.isEmpty()) {
-            runCatching {
-                val stats = usageStatsManager.queryUsageStats(
-                    UsageStatsManager.INTERVAL_DAILY,
-                    startOfDay,
-                    now
-                ) ?: emptyList()
-
-                for (stat in stats) {
-                    if (stat.packageName !in ignoredPackages && stat.totalTimeInForeground > 30_000L) {
-                        appTimeMap[stat.packageName] = (appTimeMap[stat.packageName] ?: 0L) + stat.totalTimeInForeground
-                    }
-                }
-            }
-        }
+        val unlockCount = runCatching {
+            deviceEventDao.getRecentEvents(100).count {
+                it.eventType == "SCREEN_ON" && it.timestamp >= startOfDay
+            }.coerceAtLeast(1)
+        }.getOrDefault(1)
 
         // Filter out any lingering "android" or system framework entries and sort by duration
         val sortedApps = appTimeMap
-            .filter { (pkg, duration) -> pkg !in ignoredPackages && duration > 15_000L }
+            .filter { (pkg, duration) -> pkg !in ignoredPackages && duration > 5000L }
             .toList()
             .sortedByDescending { it.second }
 

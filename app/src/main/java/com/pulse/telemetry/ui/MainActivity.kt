@@ -32,6 +32,16 @@ class MainActivity : ComponentActivity() {
         startTelemetryService()
     }
 
+    private val powerReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            val action = intent?.action ?: return
+            if (action == android.content.Intent.ACTION_POWER_CONNECTED ||
+                action == android.content.Intent.ACTION_POWER_DISCONNECTED) {
+                viewModel.refreshMetrics()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -45,6 +55,21 @@ class MainActivity : ComponentActivity() {
                 DashboardScreen(viewModel = viewModel)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val filter = android.content.IntentFilter().apply {
+            addAction(android.content.Intent.ACTION_POWER_CONNECTED)
+            addAction(android.content.Intent.ACTION_POWER_DISCONNECTED)
+        }
+        registerReceiver(powerReceiver, filter)
+        viewModel.refreshMetrics()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        runCatching { unregisterReceiver(powerReceiver) }
     }
 
     private fun observeRefreshRatePreference() {

@@ -141,7 +141,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         )
                     }
                 }
-                delay(6000L)
+                delay(2500L)
             }
         }
     }
@@ -233,7 +233,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         reader.close()
 
                         val json = JSONObject(response)
-                        val tagName = json.optString("tag_name", "v1.0.2")
+                        val tagName = json.optString("tag_name", "v1.0.3")
                         val htmlUrl = json.optString("html_url", "https://github.com/jeessunny/Pulse-Android/releases")
                         
                         var apkDownloadUrl: String? = null
@@ -248,9 +248,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                             }
                         }
 
-                        val currentVersion = "v1.0.2"
+                        val currentVersion = "v1.0.3"
                         // Strictly compare version tag: only set update if tagName is genuinely newer
-                        val hasUpdate = tagName != currentVersion && !tagName.contains("1.0.2")
+                        val hasUpdate = tagName != currentVersion && !tagName.contains("1.0.3")
                         val message = if (hasUpdate) {
                             "New release available: $tagName"
                         } else {
@@ -269,7 +269,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         _uiState.update {
                             it.copy(
                                 isUpdateChecking = false,
-                                updateStatusMessage = "Pulse is up to date (v1.0.2)",
+                                updateStatusMessage = "Pulse is up to date (v1.0.3)",
                                 updateDownloadUrl = null
                             )
                         }
