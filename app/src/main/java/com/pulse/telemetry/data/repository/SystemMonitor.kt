@@ -315,8 +315,7 @@ class SystemMonitor(private val context: Context) : SensorEventListener {
                     timestamp = System.currentTimeMillis(),
                     eventType = eventType,
                     description = description,
-                    stepsCount = detectedStepsToday,
-                    isCharging = lastChargingState ?: false
+                    stepsCount = detectedStepsToday
                 )
                 deviceEventDao.insertEvent(entity)
             }
