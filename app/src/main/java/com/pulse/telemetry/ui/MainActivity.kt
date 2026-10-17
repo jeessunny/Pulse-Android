@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
         }
         registerReceiver(powerReceiver, filter)
         viewModel.refreshMetrics()
+        viewModel.onResumeCheckInstallPermission()
     }
 
     override fun onPause() {

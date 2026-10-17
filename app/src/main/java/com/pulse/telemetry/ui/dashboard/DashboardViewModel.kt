@@ -17,7 +17,11 @@ import com.pulse.telemetry.domain.model.StorageTelemetry
 import com.pulse.telemetry.domain.model.SystemTelemetry
 import com.pulse.telemetry.domain.model.TileId
 import com.pulse.telemetry.domain.model.UsageTelemetry
+import com.pulse.telemetry.data.updater.AppReleaseInfo
+import com.pulse.telemetry.data.updater.AppUpdateManager
+import com.pulse.telemetry.data.updater.UpdateState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +51,7 @@ data class DashboardUiState(
     val updateStatusMessage: String? = null,
     val updateDownloadUrl: String? = null,
     val latestVersionName: String? = null,
+    val updateState: UpdateState = UpdateState.Idle,
     val preferredRefreshRate: Float = 0f,
     val availableRefreshRates: List<Int> = listOf(0, 60, 90, 120)
 )
@@ -54,6 +59,8 @@ data class DashboardUiState(
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = TelemetryRepository(application)
+    private val updateManager = AppUpdateManager(application)
+    private var downloadJob: Job? = null
 
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
@@ -209,79 +216,137 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun checkForUpdates() {
+        if (_uiState.value.updateState is UpdateState.Checking || _uiState.value.updateState is UpdateState.Downloading) return
+
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
+                    updateState = UpdateState.Checking,
                     isUpdateChecking = true,
                     updateStatusMessage = "Checking GitHub for updates..."
                 )
             }
 
-            withContext(Dispatchers.IO) {
-                try {
-                    val url = URL("https://api.github.com/repos/jeessunny/Pulse-Android/releases/latest")
-                    val connection = url.openConnection() as HttpURLConnection
-                    connection.connectTimeout = 6000
-                    connection.readTimeout = 6000
-                    connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                    connection.setRequestProperty("User-Agent", "Pulse-Android-App")
+            val resultState = updateManager.checkForUpdates(currentVersion = "v1.0.4")
+            _uiState.update {
+                it.copy(
+                    updateState = resultState,
+                    isUpdateChecking = false,
+                    updateStatusMessage = when (resultState) {
+                        is UpdateState.Available -> "New release available: ${resultState.release.tagName}"
+                        is UpdateState.UpToDate -> "Pulse is up to date (v1.0.4)"
+                        is UpdateState.Error -> resultState.message
+                        else -> null
+                    },
+                    updateDownloadUrl = if (resultState is UpdateState.Available) resultState.release.downloadUrl else null,
+                    latestVersionName = if (resultState is UpdateState.Available) resultState.release.tagName else null
+                )
+            }
+        }
+    }
 
-                    val responseCode = connection.responseCode
-                    if (responseCode == 200) {
-                        val reader = BufferedReader(InputStreamReader(connection.inputStream))
-                        val response = reader.readText()
-                        reader.close()
+    fun startDownload() {
+        val currentState = _uiState.value.updateState
+        val release = when (currentState) {
+            is UpdateState.Available -> currentState.release
+            is UpdateState.ReadyToInstall -> currentState.release
+            else -> null
+        } ?: return
 
-                        val json = JSONObject(response)
-                        val tagName = json.optString("tag_name", "v1.0.3")
-                        val htmlUrl = json.optString("html_url", "https://github.com/jeessunny/Pulse-Android/releases")
-                        
-                        var apkDownloadUrl: String? = null
-                        val assets = json.optJSONArray("assets")
-                        if (assets != null && assets.length() > 0) {
-                            for (i in 0 until assets.length()) {
-                                val asset = assets.getJSONObject(i)
-                                if (asset.optString("name").endsWith(".apk")) {
-                                    apkDownloadUrl = asset.optString("browser_download_url", htmlUrl)
-                                    break
-                                }
-                            }
-                        }
+        downloadJob?.cancel()
+        downloadJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    updateState = UpdateState.Downloading(
+                        release = release,
+                        progress = 0f,
+                        downloadedBytes = 0L,
+                        totalBytes = release.assetSize
+                    ),
+                    updateStatusMessage = "Downloading update ${release.tagName}..."
+                )
+            }
 
-                        val currentVersion = "v1.0.3"
-                        // Strictly compare version tag: only set update if tagName is genuinely newer
-                        val hasUpdate = tagName != currentVersion && !tagName.contains("1.0.3")
-                        val message = if (hasUpdate) {
-                            "New release available: $tagName"
-                        } else {
-                            "You are on the latest version ($currentVersion)"
-                        }
-
-                        _uiState.update {
-                            it.copy(
-                                isUpdateChecking = false,
-                                updateStatusMessage = message,
-                                updateDownloadUrl = if (hasUpdate) (apkDownloadUrl ?: htmlUrl) else null,
-                                latestVersionName = tagName
+            val result = updateManager.downloadUpdate(release) { progress, downloaded, total ->
+                _uiState.update { state ->
+                    if (state.updateState is UpdateState.Downloading) {
+                        state.copy(
+                            updateState = UpdateState.Downloading(
+                                release = release,
+                                progress = progress,
+                                downloadedBytes = downloaded,
+                                totalBytes = total
                             )
-                        }
-                    } else {
-                        _uiState.update {
-                            it.copy(
-                                isUpdateChecking = false,
-                                updateStatusMessage = "Pulse is up to date (v1.0.3)",
-                                updateDownloadUrl = null
-                            )
-                        }
-                    }
-                } catch (e: Exception) {
+                        )
+                    } else state
+                }
+            }
+
+            result.fold(
+                onSuccess = { apkFile ->
+                    val canInstall = updateManager.canInstallPackages()
                     _uiState.update {
                         it.copy(
-                            isUpdateChecking = false,
-                            updateStatusMessage = "Could not check GitHub. Please verify internet connection.",
-                            updateDownloadUrl = null
+                            updateState = UpdateState.ReadyToInstall(
+                                release = release,
+                                apkFile = apkFile,
+                                needsPermission = !canInstall
+                            ),
+                            updateStatusMessage = "Downloaded ${release.tagName}. Ready to install."
                         )
                     }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            updateState = UpdateState.Error(
+                                error.localizedMessage ?: "Failed to download update"
+                            ),
+                            updateStatusMessage = "Download failed: ${error.localizedMessage ?: "Unknown error"}"
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun cancelDownload() {
+        downloadJob?.cancel()
+        downloadJob = null
+        val currentState = _uiState.value.updateState
+        if (currentState is UpdateState.Downloading) {
+            _uiState.update {
+                it.copy(
+                    updateState = UpdateState.Available(currentState.release),
+                    updateStatusMessage = "Download cancelled"
+                )
+            }
+        }
+    }
+
+    fun installDownloadedUpdate(context: Context) {
+        val currentState = _uiState.value.updateState
+        if (currentState is UpdateState.ReadyToInstall) {
+            val installed = updateManager.startInstall(context, currentState.apkFile)
+            if (!installed) {
+                _uiState.update {
+                    it.copy(updateState = currentState.copy(needsPermission = true))
+                }
+                updateManager.openInstallPermissionSettings(context)
+            }
+        }
+    }
+
+    fun requestInstallPermission(context: Context) {
+        updateManager.openInstallPermissionSettings(context)
+    }
+
+    fun onResumeCheckInstallPermission() {
+        val currentState = _uiState.value.updateState
+        if (currentState is UpdateState.ReadyToInstall && currentState.needsPermission) {
+            if (updateManager.canInstallPackages()) {
+                _uiState.update {
+                    it.copy(updateState = currentState.copy(needsPermission = false))
                 }
             }
         }

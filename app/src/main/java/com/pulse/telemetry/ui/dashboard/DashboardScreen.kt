@@ -50,10 +50,12 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import com.pulse.telemetry.data.updater.UpdateState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -434,14 +436,14 @@ fun DashboardScreen(
                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                                     )
                                     Text(
-                                        text = "Current: v1.0.3",
+                                        text = "Current: v1.0.4",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
 
-                            if (uiState.isUpdateChecking) {
+                            if (uiState.updateState is UpdateState.Checking) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(18.dp),
                                     strokeWidth = 2.dp,
@@ -450,36 +452,83 @@ fun DashboardScreen(
                             }
                         }
 
-                        if (!uiState.updateStatusMessage.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = uiState.updateStatusMessage ?: "",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            FilledTonalButton(
-                                onClick = { viewModel.checkForUpdates() },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Check for Updates")
+                        when (val state = uiState.updateState) {
+                            is UpdateState.Idle -> {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                FilledTonalButton(
+                                    onClick = { viewModel.checkForUpdates() },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Check for Updates")
+                                }
                             }
-
-                            // Only display download button if there is actually a newer update URL available!
-                            if (!uiState.updateDownloadUrl.isNullOrBlank()) {
+                            is UpdateState.Checking -> {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Checking GitHub for updates...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            is UpdateState.UpToDate -> {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.CheckCircle,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Pulse is up to date (${state.currentVersion})",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                FilledTonalButton(
+                                    onClick = { viewModel.checkForUpdates() },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Check Again")
+                                }
+                            }
+                            is UpdateState.Available -> {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "New release available: ${state.release.tagName}",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                if (state.release.assetSize > 0L) {
+                                    val sizeMb = String.format(java.util.Locale.US, "%.1f MB", state.release.assetSize / (1024f * 1024f))
+                                    Text(
+                                        text = "Package size: $sizeMb",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (state.release.releaseNotes.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = state.release.releaseNotes.take(160) + if (state.release.releaseNotes.length > 160) "..." else "",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
                                 Button(
-                                    onClick = {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uiState.updateDownloadUrl))
-                                        context.startActivity(intent)
-                                    },
+                                    onClick = { viewModel.startDownload() },
+                                    modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Icon(
@@ -487,8 +536,121 @@ fun DashboardScreen(
                                         contentDescription = null,
                                         modifier = Modifier.size(16.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Download")
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Download & Install Update")
+                                }
+                            }
+                            is UpdateState.Downloading -> {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Downloading ${state.release.tagName}...",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (state.progress >= 0f) {
+                                        Text(
+                                            text = "${(state.progress * 100).toInt()}%",
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                if (state.progress >= 0f) {
+                                    LinearProgressIndicator(
+                                        progress = { state.progress },
+                                        modifier = Modifier.fillMaxWidth().height(6.dp),
+                                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                } else {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier.fillMaxWidth().height(6.dp),
+                                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                val downloadedMb = String.format(java.util.Locale.US, "%.1f", state.downloadedBytes / (1024f * 1024f))
+                                val totalMb = if (state.totalBytes > 0) String.format(java.util.Locale.US, "%.1f MB", state.totalBytes / (1024f * 1024f)) else "-- MB"
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "$downloadedMb / $totalMb",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    OutlinedButton(
+                                        onClick = { viewModel.cancelDownload() },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Text("Cancel", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+                            is UpdateState.ReadyToInstall -> {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Update downloaded: ${state.release.tagName}",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                if (state.needsPermission) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Please allow Pulse to install updates in Android Settings.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Button(
+                                        onClick = { viewModel.requestInstallPermission(context) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Grant Install Permission")
+                                    }
+                                } else {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Button(
+                                        onClick = { viewModel.installDownloadedUpdate(context) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.SystemUpdate,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Install Now")
+                                    }
+                                }
+                            }
+                            is UpdateState.Error -> {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = state.message,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                FilledTonalButton(
+                                    onClick = { viewModel.checkForUpdates() },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Retry")
                                 }
                             }
                         }
